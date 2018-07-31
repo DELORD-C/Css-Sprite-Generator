@@ -1,0 +1,324 @@
+#!/usr/bin/php
+<?php
+
+//définition des options
+
+    $shoropts = "i:s:p:o:c:h:r";
+
+    $longopts = array(
+        "output-image:",
+        "output-style:",
+        "padding:",
+        "override-size:",
+        "columns_number:",
+        "output-html:",
+        "recursive"
+    );
+    $options = getopt($shoropts, $longopts);
+
+    echo "\033[01;31m";
+
+//mise en place options
+    if(isset ($options['i'])){
+        $im=$options['i'];
+    }
+    if(isset ($options['output-image'])){
+        $im=$options['output-image'];
+    }
+    if(isset ($options['s'])){
+        $s=$options['s'];
+    }
+    if(isset ($options['output-style'])){
+        $s=$options['output-style'];
+    }
+    if(isset ($options['p'])){
+        $p=$options['p'];
+    }
+    if(isset ($options['padding'])){
+        $p=$options['padding'];
+    }
+    if(isset ($options['o'])){
+        $o=$options['o'];
+    }
+    if(isset ($options['override-size'])){
+        $o=$options['override-size'];
+    }
+    if(isset ($options['c'])){
+        $cmax=$options['c'];
+    }
+    if(isset ($options['columns_number'])){
+        $cmax=$options['columns_number'];
+    }
+    if(isset ($options['h'])){
+        $h=$options['h'];
+    }
+    if(isset ($options['output-html'])){
+        $h=$options['output-html'];
+    }
+    if(!isset($im) || $im == "" || $im == $argv[$argc-1]){$im='sprite.png';}
+    if(!isset($s) || $s == "" || $s == $argv[$argc-1]){$s='style.css';}
+    if(!isset($p) || $p == "" || $p == $argv[$argc-1]){$p=0;}
+    if(!isset($cmax) || $cmax == "" || $cmax == $argv[$argc-1]){$cmax=2;}
+    if(!isset($h) || $h == "" || $h == $argv[$argc-1]){$h='index.html';}
+
+
+//mise en place des différentes variables et des arguments
+    $dos = $argv[count($argv)-1];
+    if(is_dir($dos)){
+        $rep = "$dos/*.png";
+        $i=0;
+        $c=1;
+        $files=array();
+        $maxh = 0;
+        $maxl = 0;
+        $sizes=array();
+        $poses=array();
+    }else{echo "\033[01;31mMerci de fournir un dossier en argument.";exit(0);}
+
+
+//récupération des chemins des images (avec ou sans récursivité)
+    if(isset($options['r']) || isset($options['recursive'])){
+        function recursive_glob($dos) {
+            $first_files = glob($dos.'/*.png');
+            foreach (glob($dos.'/*') as $dir) {
+                $first_files = array_merge($first_files, recursive_glob($dir));
+            }
+            return $first_files;
+        }
+        $files=recursive_glob($dos);
+    }
+    else{
+        foreach (glob($rep) as $file) {
+            $files[$i]=$file;
+            $i++;
+        }
+    }
+
+
+    foreach ($files as $key => $value) {
+
+            $fichier=fopen($value,'r+');
+            $str=fread($fichier,4);
+            if (!preg_match('/PNG/',$str)){
+            unset($files[$key]);
+            }
+
+
+        if($value == "$dos/$im"){
+            $read=readline("Un fichier nommé $im existe déjà, voulez-vous le remplacer ? (O/n)");
+            if ($read!='n'){
+                system("rm $dos/$im");
+                unset($files[$key]);
+            }
+            else {
+                echo "\033[01;31mCréation du sprite annulée.";
+                exit(0);
+            }
+            }
+        }
+//redimensionnement des images si demandé
+    if (isset($o)){
+
+        function resize($image, $o) {
+            $fichier=fopen($image, 'r+');
+            $str=fread($fichier,4);
+            $img = imagecreatefrompng($image);
+            $imagehaut = imagesx($img);//get width of original image
+            $imagelarg = imagesy($img);
+            $newhaut = $o;
+            $newlarg = $o;
+            $nouvelle = imagecreatetruecolor($newhaut, $newlarg);
+            imagealphablending($nouvelle, false);
+            imagesavealpha($nouvelle,true);
+            $transparency = imagecolorallocatealpha($nouvelle, 255, 255, 255, 127);
+            imagefilledrectangle($nouvelle, 0, 0, $newlarg, $newlarg, $transparency);
+            imagecopyresampled($nouvelle, $img, 0, 0, 0, 0, $newhaut, $newlarg, $imagehaut, $imagelarg);
+            imagepng($nouvelle, "$image.tmp");
+        }
+
+        foreach ($files as $key => $value) {
+            resize($value, $o);
+            $files[$key] = "$value.tmp";
+        }
+    }
+
+//récupération des tailles max (pour création de la nouvelle image) en fonction du nombre de colonnes
+    $c=1;
+    $haut=0;
+    $large=0;
+    $lignes = array();
+    $ligne = 1;
+    $nbr=count($files);
+    $nb = 0;
+    if ($cmax > $nbr){$cmax=$nbr;}
+    foreach ($files as $key => $value) {
+        $nb++;
+        $infos = getimagesize($value);
+        $sizes["$nb x"]=$infos[0];
+        $sizes["$nb y"]=$infos[1];
+        if ($nb==$nbr){
+            if($haut<$infos[1]){
+                $haut=$infos[1];
+            }
+            $large+=$infos[0];
+            $maxh+=$haut;
+            if($large>$maxl){
+                $maxl=$large;
+            }
+            $lignes[$ligne]=$haut;
+            $large = 0;
+            $haut = 0;
+            $ligne++;
+            $c=1;
+        }
+        elseif ($c==$cmax){
+            if($haut<$infos[1]){
+                $haut=$infos[1];
+            }
+            $large+=$infos[0];
+            $maxh+=$haut;
+            if($large>$maxl){
+                $maxl=$large;
+            }
+            $lignes[$ligne]=$haut;
+            $large = 0;
+            $haut = 0;
+            $ligne++;
+            $c=1;
+        }
+        else {
+            if ($haut < $infos[1]){
+                $haut = $infos[1];
+            }
+            $large+=$infos[0];
+            $c++;
+        }
+    }
+    $padx=($cmax-1)*$p;
+    $pady=((count($lignes)-1)*$p);
+    $maxh+=$pady;
+    $maxl+=$padx;
+
+//création de l'image !
+    $img = imagecreatetruecolor($maxl, $maxh);
+    $background = imagecolorallocatealpha($img, 255, 255, 255, 127);
+    imagefill($img, 0, 0, $background);
+    imagealphablending($img, false);
+    imagesavealpha($img, true);
+    $posx=0;
+    $posy=0;
+    $c=1;
+    $ligne=1;
+    $nb=0;
+
+    foreach ($files as $key => $value) {
+        $nb++;
+        $infos = getimagesize($value);
+        $img2 = imagecreatefrompng($value);
+        imagecopy($img, $img2, $posx, $posy, 0, 0, $infos[0], $infos[1]);
+        $poses["$nb x"]=-$posx;
+        $poses["$nb y"]=-$posy;
+        $posx+=$infos[0]+$p;
+        $c++;
+
+        if ($c==$cmax+1){
+            $posx=0;
+            if(isset($lignes[$ligne])){$posy+=$lignes[$ligne]+$p;}
+            $ligne++;
+            $c=1;
+        }
+    }
+
+
+//supression des images temporaires
+    if(isset($o)){
+        foreach ($files as $key => $value) {
+            system("rm $value");
+        }
+    }
+
+
+    $nb=0;
+    $read='O';
+    if(is_file("$dos/$s")){
+        $read=readline("Un fichier nommé $s existe déjà, voulez-vous le remplacer ? (O/n)");
+        if($read != 'n'){
+            system("rm $dos/$s");
+        }
+        else{
+            echo "\033[01;31mOpération annulée.";
+            exit(0);
+        }
+    }
+    if ($read != 'n'){
+        $css=fopen("$dos/$s", 'a');
+        foreach ($files as $key => $value) {
+            $nb++;
+            preg_match('/(?!.*\/)(.*)(?=\.png)/',$value,$match);
+            $match=$match[1];
+            $x = $sizes["$nb x"];
+            $y = $sizes["$nb y"];
+            $xx = $poses["$nb x"];
+            $yy = $poses["$nb y"];
+            $text = ".$match {\n    width: $x" . "px; height: $y" . "px;\n    background: url('$im') $xx" . "px $yy" . "px;\n}\n\n";
+            fwrite($css,$text);
+        }
+    }
+
+//Vérification existace du fichier
+    $read='O';
+    if(is_file("$dos/$h")){
+        $read=readline("Un fichier nommé $h existe déjà, voulez-vous le remplacer ? (O/n)");
+            if($read != 'n'){
+                system("rm $dos/$h");
+            }
+            else{
+                echo "\033[01;31mOpération annulée.";
+                exit(0);
+            }
+    }
+
+//Création fichier html
+    if ($read!='n'){
+        $mid="";
+        $html=fopen("$dos/$h", 'a');
+        $start = "<!DOCTYPE html>
+    <html>
+
+    <head>
+        <title>Sprites</title>
+        <link rel=\"stylesheet\" type=\"text/css\" href=\"$s\" />
+    </head>
+
+    <body>
+
+        <header>
+            <h3>Here are the pictures</h3>
+        </header>
+
+        <main>";
+
+        foreach ($files as $key => $value) {
+            preg_match('/(?!.*\/)(.*)(?=\.png)/',$value,$match);
+            $match=$match[1];
+            $mid .= "\n        <img class=\"$match\"></br>";
+        }
+
+        $end = "
+        </main>
+
+        <footer>
+            <h6>Sprites display</h6>
+            <h5>Créé avec css_generator</h5>
+        </footer>
+
+    </body>
+
+    </html>";
+
+        $full = "$start$mid$end";
+        fwrite($html,$full);
+
+    }
+
+    imagepng($img, "$dos/$im");
